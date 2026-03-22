@@ -1,0 +1,17 @@
+notes.md
+
+# Build outputs (see Makefile)
+bin/
+tmp/
+
+# Go / local binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# OS / editor
+.DS_Store

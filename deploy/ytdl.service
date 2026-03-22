@@ -1,0 +1,37 @@
+# Debian systemd unit for ytdl (LAN YouTube downloader).
+#
+# Install:
+#   sudo cp deploy/ytdl.service /etc/systemd/system/ytdl.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ytdl
+#
+# Prereqs:
+#   - Build for this machine: GOOS=linux GOARCH=amd64 go build -o /usr/local/bin/ytdl ./cmd/ytdl
+#   - Dedicated user and download directory:
+#       sudo useradd --system --home /var/lib/ytdl --shell /usr/sbin/nologin ytdl
+#       sudo mkdir -p /var/lib/ytdl/downloads
+#       sudo chown -R ytdl:ytdl /var/lib/ytdl
+#   - Either install yt-dlp for user ytdl, OR grant Docker access:
+#       sudo usermod -aG docker ytdl
+#     (then log out/in or reboot so group membership applies to the service)
+#
+# Optional: bind only on LAN IP, e.g. Environment=YTD_LISTEN=192.168.1.10:8080
+
+[Unit]
+Description=LAN YouTube download service (ytdl)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ytdl
+Group=ytdl
+ExecStart=/usr/local/bin/ytdl
+Environment=YTD_LISTEN=:8080
+Environment=YTD_DOWNLOAD_DIR=/var/lib/ytdl/downloads
+Environment=YTD_DOCKER_IMAGE=jauderho/yt-dlp
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

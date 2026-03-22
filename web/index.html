@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#3367d6">
+  <meta name="description" content="Download YouTube videos on your network">
+  <title>ytdl</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3367d6;
+      --accent-dim: #2a56b8;
+      --danger: #c62828;
+      --radius: 12px;
+      --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1.5rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+    }
+    main {
+      max-width: 28rem;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 1.35rem;
+      font-weight: 600;
+      margin: 0 0 0.25rem;
+      letter-spacing: -0.02em;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 1.5rem;
+    }
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    label {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    input[type="url"] {
+      width: 100%;
+      padding: 0.85rem 1rem;
+      font-size: 1rem;
+      border: 1px solid #2d3a4d;
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--text);
+    }
+    input[type="url"]::placeholder { color: var(--muted); opacity: 0.8; }
+    input[type="url"]:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      border-color: var(--accent-dim);
+    }
+    button {
+      appearance: none;
+      border: none;
+      border-radius: var(--radius);
+      padding: 0.9rem 1.25rem;
+      font-size: 1rem;
+      font-weight: 600;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      min-height: 48px;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    button:active:not(:disabled) { background: var(--accent-dim); }
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      margin-top: 1.25rem;
+      border: 1px solid #2d3a4d;
+    }
+    .status {
+      font-size: 0.95rem;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    .status strong { color: var(--text); }
+    .err { color: #ff8a80; }
+    .ok { color: #81c784; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>YouTube download</h1>
+    <p class="sub">Paste a link. The server downloads it to its library.</p>
+    <form id="f" action="#" method="post">
+      <div>
+        <label for="url">YouTube URL</label>
+        <input id="url" name="url" type="url" inputmode="url" autocomplete="off" placeholder="https://www.youtube.com/watch?v=…" required>
+      </div>
+      <button type="submit" id="go">Download</button>
+    </form>
+    <section id="panel" class="card hidden" aria-live="polite">
+      <div id="status" class="status"></div>
+    </section>
+  </main>
+  <script>
+    (function () {
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(function () {});
+      }
+      var form = document.getElementById("f");
+      var urlEl = document.getElementById("url");
+      var btn = document.getElementById("go");
+      var panel = document.getElementById("panel");
+      var statusEl = document.getElementById("status");
+      var pollTimer = null;
+
+      function show(msg, cls) {
+        panel.classList.remove("hidden");
+        statusEl.className = "status" + (cls ? " " + cls : "");
+        statusEl.innerHTML = msg;
+      }
+
+      function stopPoll() {
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+      }
+
+      function poll(id) {
+        stopPoll();
+        pollTimer = setInterval(function () {
+          fetch("/api/jobs/" + encodeURIComponent(id))
+            .then(function (r) {
+              if (!r.ok) throw new Error("status " + r.status);
+              return r.json();
+            })
+            .then(function (j) {
+              var st = j.status;
+              if (st === "queued") show("<strong>Queued</strong> — waiting…");
+              else if (st === "running") show("<strong>Downloading</strong> — this can take a while…");
+              else if (st === "completed") {
+                stopPoll();
+                btn.disabled = false;
+                var path = j.output_path ? "<br><span class=\"ok\">Saved:</span> " + escapeHtml(j.output_path) : "";
+                show("<strong class=\"ok\">Done.</strong>" + path, "ok");
+              } else if (st === "failed") {
+                stopPoll();
+                btn.disabled = false;
+                var m = j.message ? escapeHtml(j.message) : "Unknown error";
+                show("<strong class=\"err\">Failed.</strong><br>" + m, "err");
+              }
+            })
+            .catch(function (e) {
+              stopPoll();
+              btn.disabled = false;
+              show("<strong class=\"err\">Poll error.</strong><br>" + escapeHtml(String(e.message || e)), "err");
+            });
+        }, 1500);
+      }
+
+      function escapeHtml(s) {
+        var d = document.createElement("div");
+        d.textContent = s;
+        return d.innerHTML;
+      }
+
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        stopPoll();
+        var raw = (urlEl.value || "").trim();
+        if (!raw) return;
+        btn.disabled = true;
+        show("<strong>Starting…</strong>");
+        fetch("/api/jobs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: raw })
+        })
+          .then(function (r) {
+            return r.json().then(function (body) {
+              if (!r.ok) throw new Error(body.error || r.statusText);
+              return body;
+            });
+          })
+          .then(function (body) {
+            show("<strong>Queued</strong> — job " + escapeHtml(body.id.slice(0, 8)) + "…");
+            poll(body.id);
+          })
+          .catch(function (err) {
+            btn.disabled = false;
+            show("<strong class=\"err\">Could not start.</strong><br>" + escapeHtml(err.message || String(err)), "err");
+          });
+      });
+    })();
+  </script>
+</body>
+</html>
