@@ -69,18 +69,21 @@ Jobs are stored **in memory**; they are lost when the process restarts.
 
 ## Debian + systemd
 
-1. Build or copy the Linux binary, e.g. to `/usr/local/bin/ytdl`.
-2. Create a user and download directory (see comments in [`deploy/ytdl.service`](deploy/ytdl.service)).
-3. Install **yt-dlp** for that user, **or** add the user to the `docker` group so `docker run` works non-interactively.
-4. Install the unit:
+Automated install (does user, `/var/lib/ytdl/downloads`, binary, unit, `enable` + `restart`):
 
-   ```bash
-   sudo cp deploy/ytdl.service /etc/systemd/system/ytdl.service
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now ytdl
-   ```
+```bash
+# On the server, from a clone of this repo:
+sudo ./deploy/install.sh                    # build with Go on the server
+# Or copy a cross-built binary (e.g. bin/ytdl-linux-amd64 from `make linux-amd64`):
+sudo ./deploy/install.sh ./bin/ytdl-linux-amd64
 
-Edit `Environment=` lines in the unit file as needed.
+# Optional: use Docker fallback instead of installing yt-dlp for user ytdl
+sudo INSTALL_ADD_DOCKER_GROUP=1 ./deploy/install.sh
+```
+
+Then install **yt-dlp** where the `ytdl` user can run it, **or** rely on Docker (with `INSTALL_ADD_DOCKER_GROUP=1` and Docker Engine installed). Edit [`deploy/ytdl.service`](deploy/ytdl.service) (or the installed `/etc/systemd/system/ytdl.service`) for `YTD_LISTEN` / paths, then `sudo systemctl daemon-reload && sudo systemctl restart ytdl`.
+
+Manual steps match the comments in [`deploy/ytdl.service`](deploy/ytdl.service).
 
 ## Security
 
